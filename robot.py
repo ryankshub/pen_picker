@@ -75,6 +75,25 @@ def configure_camera():
 
     return pipeline, config
 
+def get_filtered_image(image, hue=132):
+    """
+    Takes in an image and returns a filter image with only
+    that color in it. 
+    """
+    #Apply color filter
+    lower_hsv = np.array([hue-10, 100, 100])
+    higher_hsv = np.array([hue+10, 255, 255])
+    hsv_image = cv.cvtColor(image, cv.COLOR_BGR2HSV)
+    #Create and dilate mask
+    mask = cv.inRange(hsv_image, lower_hsv, higher_hsv)
+    dilation_elem1 = cv.getStructuringElement(cv.MORPH_RECT, (4,4))
+    mask = cv.dilate(mask, dilation_elem1)
+    #Create filtered image
+    filter_image = cv.bitwise_and(image, image, mask=mask)
+
+    return filter_image, mask
+
+
 def stream_camera(pipeline, config):
     """
     Stream from the camera given a pyrealsense.config 
@@ -112,20 +131,30 @@ def stream_camera(pipeline, config):
             if not aligned_depth_frame or not color_frame:
                 continue
 
+            #Grab data from depth frame and color frame
             depth_image = np.asanyarray(aligned_depth_frame.get_data())
             color_image = np.asanyarray(color_frame.get_data())
-            #grayscale_image = cv.cvtColor(color_image, cv.COLOR_BGR2GRAY)
 
-            light_purple_hsv = np.array([122, 100, 100])
-            dark_purple_hsv = np.array([142, 255, 255])
-
-            mask = cv.inRange(hsv_image, light_purple_hsv, dark_purple_hsv)
-
-            filter_image = cv.bitwise_and(color_image, color_image, mask=mask)
-
-
+            #Filter data from color frame
+            filter_image, mask = get_filtered_image(color_image)
+            
+            #Find and draw contours on image
+            cons, _ = cv.findContours(mask, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+            cv.drawContours(filter_image, cons, 0, (0,255,0), 3)
+            try:
+                cnt = cons[0]
+                M = cv.moments(cnt)
+                cen_x = int(M['m10']/M['m00'])
+                cen_y = int(M['m01']/M['m00'])
+                print(f"Centroid: {cen_x}, {cen_y}")
+            except IndexError:
+                # If no contours can be found, 
+                # Do not define a centroid
+                cen_x = None
+                cen_y = None
+            
+            #Display feeds (for debugging)
             cv.imshow('Standard RGB', color_image)
-            #cv.imshow('Grayscale', grayscale_image)
             cv.imshow('Mask', mask)
             cv.imshow('Filtered', filter_image)
             key = cv.waitKey(1)
