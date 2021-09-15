@@ -73,16 +73,57 @@ def configure_camera():
         rs.format.bgr8,
         color_framerate)
 
-    return config
+    return pipeline, config
 
-def stream_camera(config):
+def stream_camera(pipeline, config):
     """
     Stream from the camera given a pyrealsense.config 
     """
     # Start streaming
     profile = pipeline.start(config)
 
+    #Get depth sensor (Stereo Module)
+    depth_sensor = profile.get_device().first_depth_sensor()
+    depth_scale = depth_sensor.get_depth_scale()
+    print(f"Depth Scale: {depth_scale}")
+
+    #Ignore any object .5 meters away
+    clip_dist_m = .5 # 1/2 meter
+    clip_dist_px = clip_dist_m / depth_scale
+
+    # Create align object, makes alignment of two streams
+    align_to = rs.stream.color
+    align = rs.align(align_to)
+
+    #Streaming loop
+    try:
+        while True:
+            # Get frames from pipeline [Blocking function]
+            frames = pipeline.wait_for_frames()
+
+            # Align the frames
+            aligned_frames = align.process(frames)
+
+            # Get aligned frames
+            aligned_depth_frame = aligned_frames.get_depth_frame()
+            color_frame = aligned_frames.get_color_frame()
+
+            # Check both frames are good
+            if not aligned_depth_frame or not color_frame:
+                continue
+
+            depth_image = np.asanyarray(aligned_depth_frame.get_data())
+            color_image = np.asanyarray(color_frame.get_data())
+            filter_image = color_image
+
+            cv2.imshow('Standard RGB', color_image)
+            cv2.imshow('Filtered Image', filter_image)
+            cv2.waitKey(1)
+    finally:
+        pipeline.stop()
+
 
 if __name__ == '__main__':
-    configure_camera()
+    pipeline, config = configure_camera()
+    stream_camera(pipeline, config)
 
