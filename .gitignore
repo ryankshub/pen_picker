@@ -1,0 +1,8 @@
+#GitIgnore for MSR Orientation codebase
+
+# Compiled files
+*.zip
+
+
+# Binary files
+*.pyc
