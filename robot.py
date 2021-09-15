@@ -5,7 +5,7 @@
 # Project imports
 # None
 # Python imports
-import cv2
+import cv2 as cv
 import numpy as np
 # 3rd-party imports
 import pyrealsense2 as rs
@@ -114,11 +114,24 @@ def stream_camera(pipeline, config):
 
             depth_image = np.asanyarray(aligned_depth_frame.get_data())
             color_image = np.asanyarray(color_frame.get_data())
-            filter_image = color_image
+            #grayscale_image = cv.cvtColor(color_image, cv.COLOR_BGR2GRAY)
 
-            cv2.imshow('Standard RGB', color_image)
-            cv2.imshow('Filtered Image', filter_image)
-            cv2.waitKey(1)
+            light_purple_hsv = np.array([122, 100, 100])
+            dark_purple_hsv = np.array([142, 255, 255])
+
+            mask = cv.inRange(hsv_image, light_purple_hsv, dark_purple_hsv)
+
+            filter_image = cv.bitwise_and(color_image, color_image, mask=mask)
+
+
+            cv.imshow('Standard RGB', color_image)
+            #cv.imshow('Grayscale', grayscale_image)
+            cv.imshow('Mask', mask)
+            cv.imshow('Filtered', filter_image)
+            key = cv.waitKey(1)
+            if key == 27:
+                cv.destroyAllWindows()
+                break
     finally:
         pipeline.stop()
 
