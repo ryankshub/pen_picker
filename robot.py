@@ -75,6 +75,7 @@ def configure_camera():
 
     return pipeline, config
 
+
 def get_filtered_image(image, hue=132):
     """
     Takes in an image and returns a filter image with only
@@ -92,6 +93,36 @@ def get_filtered_image(image, hue=132):
     filter_image = cv.bitwise_and(image, image, mask=mask)
 
     return filter_image, mask
+
+
+def draw_centroid(image, cen_x, cen_y, draw_len=5):
+    """
+    Draws a red square on image to represent centroid
+
+    Arguments:
+        2D np.arrary: image - original image
+        int: cen_x - x pixel coordinate of centroid
+        int: cen_y - y pixel coordinate of centroid
+        int: draw_len - pixel side length of drawn sqaure
+
+    Returns:
+        If cen_x & cen_y are not None, return image with square
+        Else, return original image
+    """
+    if cen_x is None or cen_y is None:
+        return image
+
+    image_width = image.shape[1]
+    image_length = image.shape[0]
+
+    lower_x_bound = max(0, cen_x - draw_len)
+    upper_x_bound = min(image_width, cen_x + draw_len)
+
+    lower_y_bound = max(0, cen_y - draw_len)
+    upper_y_bound = min(image_length, cen_y + draw_len)
+
+    image[lower_y_bound:upper_y_bound, lower_x_bound:upper_x_bound] = [0,0,255]
+    return image
 
 
 def stream_camera(pipeline, config):
@@ -146,13 +177,15 @@ def stream_camera(pipeline, config):
                 M = cv.moments(cnt)
                 cen_x = int(M['m10']/M['m00'])
                 cen_y = int(M['m01']/M['m00'])
-                print(f"Centroid: {cen_x}, {cen_y}")
             except IndexError:
                 # If no contours can be found, 
                 # Do not define a centroid
                 cen_x = None
                 cen_y = None
             
+            #draw centroid if it exist
+            filter_image = draw_centroid(filter_image, cen_x, cen_y)
+
             #Display feeds (for debugging)
             cv.imshow('Standard RGB', color_image)
             cv.imshow('Mask', mask)
