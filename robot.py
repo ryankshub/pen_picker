@@ -6,6 +6,7 @@
 # None
 # Python imports
 import cv2 as cv
+import math
 import numpy as np
 # 3rd-party imports
 import pyrealsense2 as rs
@@ -76,7 +77,7 @@ def configure_camera():
     return pipeline, config
 
 
-def get_filtered_image(image, hue=132):
+def apply_color_filter(image, hue=122):
     """
     Takes in an image and returns a filter image with only
     that color in it. 
@@ -87,12 +88,51 @@ def get_filtered_image(image, hue=132):
     hsv_image = cv.cvtColor(image, cv.COLOR_BGR2HSV)
     #Create and dilate mask
     mask = cv.inRange(hsv_image, lower_hsv, higher_hsv)
-    dilation_elem1 = cv.getStructuringElement(cv.MORPH_RECT, (4,4))
-    mask = cv.dilate(mask, dilation_elem1)
+    dilation_elem = cv.getStructuringElement(cv.MORPH_RECT, (4,4))
+    mask = cv.dilate(mask, dilation_elem)
     #Create filtered image
     filter_image = cv.bitwise_and(image, image, mask=mask)
 
     return filter_image, mask
+
+
+def apply_threshold_filter(image, thres=85):
+    """
+    Apply Grayscale filter to image
+    """
+    gray_image = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+    filter_image, mask = cv.threshold(gray_image, thres, 255, cv.THRESH_BINARY_INV)
+    filter_image = cv.bitwise_and(image, image, mask=mask)
+    return filter_image, mask
+
+# TODO: Implement a color-difference function
+# def apply_nn_policy(image, target_BGR):
+#     """
+#     Apply a makeshift nearest_neighbor filter.
+#     The filter finds the closest color to the target color and
+#     then applies a color filter. 
+#     """
+#     min_dist = float('inf') #Super High Number
+#     best_py = None
+#     best_px = None
+#     for py in range(image.shape[0]):
+#         for px in range(image.shape[1]):
+#             if all(image[py, px] == 0):
+#                 print("BLACK")
+#                 continue
+#             blue_diff = (image[py, px, 0] - target_BGR[0])**2
+#             green_diff = (image[py, px, 1] - target_BGR[1])**2
+#             red_diff = (image[py, px, 2] - target_BGR[2])**2
+#             dist = math.sqrt(blue_diff + green_diff + red_diff)
+#             if (dist < min_dist):
+#                 best_py = py
+#                 best_px = px
+#                 min_dist = dist
+    
+#     best_match = np.uint8([[image[best_py, best_px]]])
+#     best_match_HSV = cv.cvtColor(best_match, cv.COLOR_BGR2HSV)
+#     filter_image, mask = apply_color_filter(image, best_match_HSV[0][0][0])
+#     return filter_image, mask
 
 
 def draw_centroid(image, cen_x, cen_y, draw_len=5):
@@ -165,31 +205,38 @@ def stream_camera(pipeline, config):
             #Grab data from depth frame and color frame
             depth_image = np.asanyarray(aligned_depth_frame.get_data())
             color_image = np.asanyarray(color_frame.get_data())
+            
+            #Set target color 
+            northwestern_purple_BGR = [132, 42, 78]
 
             #Filter data from color frame
-            filter_image, mask = get_filtered_image(color_image)
-            
+            thres_img, thres_mask = apply_threshold_filter(color_image)
+            erosion_elem = cv.getStructuringElement(cv.MORPH_RECT, (4,4))
+            thres_mask = cv.erode(thres_mask, erosion_elem)
+                       
             #Find and draw contours on image
-            cons, _ = cv.findContours(mask, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
-            cv.drawContours(filter_image, cons, 0, (0,255,0), 3)
+            cons, _ = cv.findContours(thres_mask, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+            cv.drawContours(thres_img, cons, 0, (0,255,0), 3)
             try:
                 cnt = cons[0]
                 M = cv.moments(cnt)
                 cen_x = int(M['m10']/M['m00'])
                 cen_y = int(M['m01']/M['m00'])
-            except IndexError:
+            except:
                 # If no contours can be found, 
                 # Do not define a centroid
                 cen_x = None
                 cen_y = None
             
-            #draw centroid if it exist
-            filter_image = draw_centroid(filter_image, cen_x, cen_y)
+            # #draw centroid if it exist
+            filter_image = draw_centroid(thres_img, cen_x, cen_y)
 
             #Display feeds (for debugging)
             cv.imshow('Standard RGB', color_image)
-            cv.imshow('Mask', mask)
-            cv.imshow('Filtered', filter_image)
+            cv.imshow('Threshold Mask', thres_mask)
+            cv.imshow('Thres Filtered', thres_img)
+            #cv.imshow('HSV Mask', hsv_mask)
+            #cv.imshow('HSV Filtered', hsv_img)
             key = cv.waitKey(1)
             if key == 27:
                 cv.destroyAllWindows()
